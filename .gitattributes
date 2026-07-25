@@ -1,0 +1,3 @@
+# badness emits LF; keep fixtures byte-stable on Windows checkouts so
+# `badness format --check` compares against what CI actually formats.
+fixtures/*.tex text eol=lf

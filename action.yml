@@ -1,0 +1,175 @@
+name: "badness-action"
+description: "Install badness and run format/lint checks"
+author: "jolars"
+inputs:
+  path:
+    description: "File or directory to check"
+    required: false
+    default: "."
+  version:
+    description: "badness version to install (latest or vX.Y.Z)"
+    required: false
+    default: "latest"
+  format:
+    description: "Run badness format --check"
+    required: false
+    default: "true"
+  lint:
+    description: "Run badness lint"
+    required: false
+    default: "true"
+  config:
+    description: "Optional path to a badness.toml config file"
+    required: false
+    default: ""
+  verify-checksum:
+    description: "Verify the downloaded asset against its published SHA256 (skips with a warning if the release has no checksum)"
+    required: false
+    default: "true"
+outputs:
+  version:
+    description: "The installed badness version"
+    value: ${{ steps.version-unix.outputs.version || steps.version-windows.outputs.version }}
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve badness version
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -eu
+        REQUESTED="${{ inputs.version }}"
+        if [ "$REQUESTED" = "latest" ]; then
+          # Resolve to the newest non-draft release that contains this
+          # platform's asset, not simply the newest release, whose binaries
+          # may still be uploading (or have failed to build).
+          case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64) ASSET="badness-x86_64-unknown-linux-gnu.tar.gz" ;;
+          Linux-ARM64) ASSET="badness-aarch64-unknown-linux-gnu.tar.gz" ;;
+          macOS-X64) ASSET="badness-x86_64-apple-darwin.tar.gz" ;;
+          macOS-ARM64) ASSET="badness-aarch64-apple-darwin.tar.gz" ;;
+          Windows-X64) ASSET="badness-x86_64-pc-windows-msvc.zip" ;;
+          Windows-ARM64) ASSET="badness-aarch64-pc-windows-msvc.zip" ;;
+          *)
+            echo "Unsupported platform: ${RUNNER_OS}-${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+          esac
+          export ASSET
+          RESOLVED="$(gh api "repos/jolars/badness/releases?per_page=100" \
+            --jq '[.[] | select((.draft or .prerelease) | not) | select(any(.assets[]; .name == env.ASSET))][0].tag_name')"
+          if [ -z "$RESOLVED" ] || [ "$RESOLVED" = "null" ]; then
+            echo "Could not find a non-draft release containing ${ASSET}" >&2
+            exit 1
+          fi
+          echo "Resolved latest to ${RESOLVED}"
+        else
+          case "$REQUESTED" in
+          v*) RESOLVED="$REQUESTED" ;;
+          *) RESOLVED="v${REQUESTED}" ;;
+          esac
+        fi
+        echo "resolved-version=${RESOLVED}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache badness binary
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/badness-bin
+        key: badness-${{ steps.resolve.outputs.resolved-version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install badness (Unix)
+      if: runner.os != 'Windows' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/install-badness.sh"
+      env:
+        BADNESS_REPO: jolars/badness
+        BADNESS_VERSION: ${{ steps.resolve.outputs.resolved-version }}
+        BADNESS_INSTALL_DIR: ${{ runner.temp }}/badness-bin
+        BADNESS_VERIFY_CHECKSUM: ${{ inputs.verify-checksum }}
+        # Lets the install script run `gh attestation verify`.
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Install badness (Windows)
+      if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: . "${{ github.action_path }}/scripts/install-badness.ps1"
+      env:
+        BADNESS_REPO: jolars/badness
+        BADNESS_VERSION: ${{ steps.resolve.outputs.resolved-version }}
+        BADNESS_INSTALL_DIR: ${{ runner.temp }}\badness-bin
+        BADNESS_VERIFY_CHECKSUM: ${{ inputs.verify-checksum }}
+        # Lets the install script run `gh attestation verify`.
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Add badness to PATH (Unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: echo "${{ runner.temp }}/badness-bin" >> "$GITHUB_PATH"
+
+    - name: Add badness to PATH (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: Add-Content -Path $env:GITHUB_PATH -Value "${{ runner.temp }}\badness-bin"
+
+    - name: Capture badness version (Unix)
+      if: runner.os != 'Windows'
+      id: version-unix
+      shell: bash
+      run: |
+        VERSION="$(badness --version | awk '{print $2}')"
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    - name: Capture badness version (Windows)
+      if: runner.os == 'Windows'
+      id: version-windows
+      shell: pwsh
+      run: |
+        $versionLine = badness --version
+        $version = ($versionLine -split ' ')[1]
+        "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    - name: Run format check (Unix)
+      if: runner.os != 'Windows' && inputs.format == 'true'
+      shell: bash
+      run: |
+        CONFIG_ARGS=()
+        if [ -n "${{ inputs.config }}" ]; then
+          CONFIG_ARGS=(--config "${{ inputs.config }}")
+        fi
+        badness format --check "${{ inputs.path }}" "${CONFIG_ARGS[@]}"
+
+    - name: Run format check (Windows)
+      if: runner.os == 'Windows' && inputs.format == 'true'
+      shell: pwsh
+      run: |
+        $badnessArgs = @("format", "--check", "${{ inputs.path }}")
+        if ("${{ inputs.config }}" -ne "") {
+          $badnessArgs += @("--config", "${{ inputs.config }}")
+        }
+        & badness @badnessArgs
+
+    - name: Run lint check (Unix)
+      if: runner.os != 'Windows' && inputs.lint == 'true'
+      shell: bash
+      run: |
+        CONFIG_ARGS=()
+        if [ -n "${{ inputs.config }}" ]; then
+          CONFIG_ARGS=(--config "${{ inputs.config }}")
+        fi
+        badness lint "${{ inputs.path }}" "${CONFIG_ARGS[@]}"
+
+    - name: Run lint check (Windows)
+      if: runner.os == 'Windows' && inputs.lint == 'true'
+      shell: pwsh
+      run: |
+        $badnessArgs = @("lint", "${{ inputs.path }}")
+        if ("${{ inputs.config }}" -ne "") {
+          $badnessArgs += @("--config", "${{ inputs.config }}")
+        }
+        & badness @badnessArgs
+branding:
+  icon: code
+  color: gray-dark
