@@ -72,29 +72,29 @@ jobs:
 
 ## Inputs
 
-| Input             | Description                                       | Default  |
-| ----------------- | ------------------------------------------------- | -------- |
-| `path`            | File or directory to check                        | `.`      |
-| `version`         | badness version to install (`latest` or `vX.Y.Z`) | `latest` |
-| `format`          | Run `badness format --check`                      | `true`   |
-| `quiet`           | Suppress the `format --check` diff (list only)    | `false`  |
-| `lint`            | Run `badness lint`                                | `true`   |
-| `config`          | Optional path to a `badness.toml` config file     | `""`     |
-| `verify-checksum` | Verify the downloaded asset against its SHA256    | `true`   |
+  | Input             | Description                                       | Default  |
+  | ----------------- | ------------------------------------------------- | -------- |
+  | `path`            | File or directory to check                        | `.`      |
+  | `version`         | badness version to install (`latest` or `vX.Y.Z`) | `latest` |
+  | `format`          | Run `badness format --check`                      | `true`   |
+  | `quiet`           | Suppress the `format --check` diff (list only)    | `false`  |
+  | `lint`            | Run `badness lint`                                | `true`   |
+  | `config`          | Optional path to a `badness.toml` config file     | `""`     |
+  | `verify-checksum` | Verify the downloaded asset against its SHA256    | `true`   |
 
 ## Outputs
 
-| Output    | Description                   |
-| --------- | ----------------------------- |
-| `version` | Installed badness CLI version |
+  | Output    | Description                   |
+  | --------- | ----------------------------- |
+  | `version` | Installed badness CLI version |
 
 ## Checksum verification
 
 When `verify-checksum` is `true` (the default), the action downloads the
 `.sha256` sidecar published alongside each release asset and verifies the
 archive before installing. Releases that predate checksum publishing have no
-sidecar; for those the action prints a warning and installs without
-verification rather than failing.
+sidecar; for those the action prints a warning and installs without verification
+rather than failing.
 
 Checksums guard against corrupted or truncated downloads; they are not a
 substitute for release signing.
@@ -103,11 +103,11 @@ substitute for release signing.
 
 Badness release archives carry a [build provenance
 attestation](https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds),
-signed via Sigstore and tied to the workflow that built them. Unlike a
-checksum, this cannot be forged by an attacker who only controls the release
-assets. When the `gh` CLI is available, this action verifies it before
-installing; a failing attestation aborts the install, while a missing one
-(older releases) or a missing `gh` warns and continues.
+signed via Sigstore and tied to the workflow that built them. Unlike a checksum,
+this cannot be forged by an attacker who only controls the release assets. When
+the `gh` CLI is available, this action verifies it before installing; a failing
+attestation aborts the install, while a missing one (older releases) or a
+missing `gh` warns and continues.
 
 To verify by hand:
 
