@@ -77,6 +77,7 @@ jobs:
 | `path`            | File or directory to check                        | `.`      |
 | `version`         | badness version to install (`latest` or `vX.Y.Z`) | `latest` |
 | `format`          | Run `badness format --check`                      | `true`   |
+| `quiet`           | Suppress the `format --check` diff (list only)    | `false`  |
 | `lint`            | Run `badness lint`                                | `true`   |
 | `config`          | Optional path to a `badness.toml` config file     | `""`     |
 | `verify-checksum` | Verify the downloaded asset against its SHA256    | `true`   |
